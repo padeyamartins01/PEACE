@@ -1,0 +1,391 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>$queezyP.com</title>
+
+<style>
+@font-face {
+    font-family: 'DepartureMono';
+    src: url('font/DepartureMono-Regular.otf') format('opentype');
+}
+
+/* RESET */
+* { margin:0; padding:0; box-sizing:border-box; }
+
+/* GLOBAL */
+body, html {
+    width:100%;
+    height:100%;
+    background:#7c7c7c;
+    font-family: 'DepartureMono', monospace;
+    color:#000;
+    overflow:hidden;
+}
+
+/* Pixelated Screen + LCD Tint */
+#app, #display {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    position: relative;
+}
+
+/* Pixel Grid Overlay */
+#app::after {
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background-image:
+        linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px);
+    background-size:3px 3px;
+    opacity:0.35;
+    z-index:999;
+}
+
+/* APP CONTAINER */
+#app {
+    width:100vw;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+
+/* STATUS BAR */
+#status {
+    height:40px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:0 16px;
+    font-size:18px;
+    background:#7c7c7c;
+    border-bottom:1px solid #333;
+}
+
+/* DISPLAY AREA */
+#display {
+    flex:1;
+    padding:20px;
+    overflow:hidden;
+    position:relative;
+}
+
+/* MENU LIST */
+#menu li {
+    list-style:none;
+    padding:12px 10px;
+    font-size:22px;
+    border-radius:6px;
+    margin-bottom:6px;
+    background:none;
+    transition:0.1s;
+}
+
+#menu li.active {
+    background:#1e90ff;
+    color:white;
+}
+
+/* NOW PLAYING (centered) */
+#nowPlaying {
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height:100%;
+    text-align:center;
+    gap:12px;
+}
+
+.title {
+    font-size:34px;
+    font-weight:700;
+}
+
+.artist {
+    font-size:22px;
+    opacity:0.8;
+}
+
+/* SEEK BAR AREA */
+#seekContainer {
+    width:85%;
+    margin-top:20px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+#seekBar {
+    width:100%;
+    -webkit-appearance:none;
+    appearance:none;
+    height:10px;
+    border-radius:6px;
+    background:#444;
+    outline:none;
+    cursor:pointer;
+}
+
+#seekBar::-webkit-slider-thumb {
+    -webkit-appearance:none;
+    appearance:none;
+    width:18px;
+    height:18px;
+    background:#1e90ff;
+    border-radius:4px;
+    cursor:pointer;
+}
+
+#seekBar::-moz-range-thumb {
+    width:18px;
+    height:18px;
+    background:#1e90ff;
+    border-radius:4px;
+    cursor:pointer;
+}
+
+.timeRow {
+    width:100%;
+    display:flex;
+    justify-content:space-between;
+    font-size:18px;
+    opacity:0.7;
+    margin-top:4px;
+}
+
+/* CONTROLS */
+#controls {
+    height:70px;
+    background:#7c7c7c;
+    border-top:1px solid #333;
+    display:flex;
+    align-items:center;
+    justify-content:space-around;
+    font-size:34px;
+    padding-bottom:10px;
+    user-select:none;
+}
+
+.btn {
+    padding:10px 20px;
+    border-radius:6px;
+    font-weight:700;
+}
+
+.btn:active {
+    background:#333;
+    border-radius: 2px;
+    color:white;
+}
+
+/* SWIPE AREA */
+.swipe-area {
+    position:absolute;
+    top:0; left:0;
+    width:100%;
+    height:100%;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+    <div id="status">
+        <div>PEACE</div>
+        <div id="clock"></div>
+    </div>
+
+    <div id="display">
+        <ul id="menu"></ul>
+
+        <div id="nowPlaying">
+            <div class="title" id="npTitle"></div>
+            <div class="artist" id="npArtist"></div>
+
+            <div id="seekContainer">
+                <input type="range" id="seekBar" min="0" max="100" value="0">
+                <div class="timeRow">
+                    <span id="currentTime">0:00</span>
+                    <span id="totalTime">0:00</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="swipe-area" id="swipe"></div>
+    </div>
+
+    <div id="controls">
+        <div class="btn" id="back">⟵</div>
+        <div class="btn" id="play">▶</div>
+        <div class="btn" id="forward">⟶</div>
+    </div>
+</div>
+
+<script>
+const audio = new Audio();
+
+const state = {
+    view: "menu",
+    selected: 0,
+    playing: false,
+    tracks: [
+        { title: "RAISE EM TO THE SKY", artist:"$queezy P", src:"PEACE\RAISE EM TO THE SKY.mp3" },
+        { title: "DANCE", artist:"$queezy P", src:"PEACE\DANCE.mp3" },
+        { title: "STILL GOOD?", artist:"$queezy P", src:"PEACE\STILL GOOD.mp3" },
+        { title: "PRADA BAG", artist:"$queezy P", src:"PEACE\PRADA BAG.mp3" },
+        { title: "WOAH, WOW, WHY?", artist:"$queezy P", src:"PEACE\WOAH, WOW, WHY.mp3" },
+        { title: "BOOGIE/BLOW", artist:"$queezy P", src:"PEACE\BOOGIE-BLOW.mp3" },
+        { title: "THE MOVEMENT", artist:"$queezy P", src:"PEACE\THE MOVEMENT.mp3" }
+    ]
+};
+
+const menu = document.getElementById("menu");
+const nowPlaying = document.getElementById("nowPlaying");
+const npTitle = document.getElementById("npTitle");
+const npArtist = document.getElementById("npArtist");
+const playBtn = document.getElementById("play");
+const seekBar = document.getElementById("seekBar");
+const currentTimeEl = document.getElementById("currentTime");
+const totalTimeEl = document.getElementById("totalTime");
+
+function renderMenu() {
+    menu.innerHTML = "";
+    state.tracks.forEach((t, i) => {
+        const li = document.createElement("li");
+        li.textContent = `${t.title} — ${t.artist}`;
+        if(i === state.selected) li.classList.add("active");
+        menu.appendChild(li);
+    });
+}
+
+function loadTrack(index) {
+    audio.src = state.tracks[index].src;
+    audio.load();
+}
+
+function showPlayer(index) {
+    state.view = "player";
+    menu.style.display = "none";
+    nowPlaying.style.display = "flex";
+
+    const t = state.tracks[index];
+    npTitle.textContent = t.title;
+    npArtist.textContent = t.artist;
+
+    loadTrack(index);
+
+    if (state.playing) audio.play();
+}
+
+function showMenu() {
+    state.view = "menu";
+    nowPlaying.style.display = "none";
+    menu.style.display = "block";
+    renderMenu();
+}
+
+function moveSelection(delta) {
+    if(state.view !== "menu") return;
+    state.selected = (state.selected + delta + state.tracks.length) % state.tracks.length;
+    renderMenu();
+}
+
+document.getElementById("back").onclick = () => {
+    if(state.view === "player") showMenu();
+    else moveSelection(-1);
+};
+
+document.getElementById("forward").onclick = () => {
+    if(state.view === "player") {
+        state.selected = (state.selected + 1) % state.tracks.length;
+        showPlayer(state.selected);
+        if (state.playing) audio.play();
+    } else {
+        moveSelection(1);
+    }
+};
+
+document.getElementById("play").onclick = () => {
+    if(state.view === "menu") {
+        state.playing = true;
+        showPlayer(state.selected);
+        audio.play();
+        playBtn.textContent = "❚❚";
+        return;
+    }
+
+    state.playing = !state.playing;
+    playBtn.textContent = state.playing ? "❚❚" : "▶";
+
+    if(state.playing) audio.play();
+    else audio.pause();
+};
+
+function fmt(t){
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+}
+
+// Update seek bar and total time
+audio.addEventListener("loadedmetadata", () => {
+    seekBar.max = audio.duration;
+    totalTimeEl.textContent = fmt(audio.duration);
+});
+
+// Update seek bar during playback
+audio.addEventListener("timeupdate", () => {
+    seekBar.value = audio.currentTime;
+    currentTimeEl.textContent = fmt(audio.currentTime);
+});
+
+// Make seek bar interactive
+seekBar.addEventListener("input", () => {
+    audio.currentTime = seekBar.value;
+});
+
+// Autoplay next track
+audio.addEventListener("ended", () => {
+    state.selected = (state.selected + 1) % state.tracks.length;
+    showPlayer(state.selected);
+    if (state.playing) audio.play();
+});
+
+window.addEventListener("keydown", e => {
+    if(e.key === "ArrowUp") moveSelection(-1);
+    if(e.key === "ArrowDown") moveSelection(1);
+    if(e.key === "Enter") showPlayer(state.selected);
+    if(e.key === " ") { e.preventDefault(); playBtn.click(); }
+    if(e.key === "Escape") showMenu();
+});
+
+let startY = 0;
+document.getElementById("swipe").addEventListener("touchstart", e => {
+    startY = e.touches[0].clientY;
+});
+document.getElementById("swipe").addEventListener("touchmove", e => {
+    const dy = e.touches[0].clientY - startY;
+    if(Math.abs(dy) > 50) {
+        moveSelection(dy > 0 ? 1 : -1);
+        startY = e.touches[0].clientY;
+    }
+});
+
+function updateClock(){
+    const d = new Date();
+    const h = d.getHours().toString().padStart(2,"0");
+    const m = d.getMinutes().toString().padStart(2,"0");
+    document.getElementById("clock").textContent = `${h}:${m}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+renderMenu();
+</script>
+
+</body>
+</html>
